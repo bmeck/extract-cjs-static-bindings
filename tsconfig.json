@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["estree", "node"],
+    "strict": true,
+    "target": "ES2020"
+  }
+}
