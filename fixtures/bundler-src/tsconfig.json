@@ -1,0 +1,8 @@
+{
+  "files": ["entry.js", "dep.js", "inner-dep.js"],
+  "compilerOptions": {
+    "allowJs": true,
+    "outDir": "../bundler-out/typescript.cjs",
+    "module": "CommonJS"
+  }
+}

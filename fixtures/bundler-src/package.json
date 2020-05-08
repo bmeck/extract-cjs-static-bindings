@@ -1,0 +1,30 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:webpack:umd ; npm run build:webpack:cjs ; npm run build:parcel:cjs ; npm run build:rollup:cjs ; npm run build:rollup:umd ; npm run build:typescript:cjs ; npm run build:babel:cjs",
+    "build:webpack:umd": "webpack --config ./webpack.config.umd.cjs",
+    "build:webpack:cjs": "webpack --config ./webpack.config.commonjs.cjs",
+    "build:parcel:cjs": "parcel build ./entry.js ; mv dist/entry.js ../bundler-out/parcel.cjs.js ; mv dist/entry.js.map ../bundler-out/parcel.cjs.js",
+    "build:rollup:cjs": "rollup --config ./rollup.config.commonjs.cjs",
+    "build:rollup:umd": "rollup --config ./rollup.config.umd.cjs",
+    "build:typescript:cjs": "tsc",
+    "build:babel:cjs": "babel --plugins @babel/plugin-transform-modules-commonjs dep.js entry.js inner-dep.js --out-dir ../bundler-out/babel.cjs"
+  },
+  "targets": {
+    "parcel-umd": {
+      "context": "node",
+      "outputFormat": "commonjs"
+    }
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.8.4",
+    "@babel/plugin-transform-modules-commonjs": "^7.9.6",
+    "@babel/preset-env": "^7.9.6",
+    "parcel": "^1.12.4",
+    "rollup": "^2.8.2",
+    "typescript": "^3.8.3",
+    "webpack": "^4.43.0",
+    "webpack-cli": "^3.3.11"
+  },
+  "dependencies": {}
+}
