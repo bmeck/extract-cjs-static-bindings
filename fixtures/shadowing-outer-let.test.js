@@ -1,7 +1,7 @@
 // @expected 
 // @ts-nocheck
 let exports = {
-  a: 1,
-  c: 3
+  _a: -1,
+  _b: -2
 };
-exports.b = 2;
+exports._c = 2;

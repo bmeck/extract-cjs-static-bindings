@@ -1,11 +1,12 @@
 // @expected 
+// @ts-nocheck
 const exports = {
-  a: 1,
-  c: 3
+  _a: -1,
+  _b: -2
 };
-exports.a = 1;
+exports._c = -3;
 {
-  let exports = {b: 2};
-  exports.b = 2;
+  let exports = {_d: -4};
+  exports._d = -4.1;
 }
-exports.c = 3;
+exports._e = -5;

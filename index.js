@@ -427,6 +427,7 @@ class Analyzer {
 function performAnalysis(filename, job) {
   const txt = require("fs").readFileSync(filename, "utf8");
   const ast = require("acorn").parse(txt, {
+    // @ts-ignore
     ecmaVersion: 11,
     allowReturnOutsideFunction: true,
   });
@@ -636,6 +637,12 @@ function performAnalysis(filename, job) {
         }
         state.scopes.withScope("var", () => {
           state.scopes.withScope("let", () => {
+            if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') {
+              const { id } = node;
+              if (id) {
+                state.scopes.declareBinding('var', id.name);
+              }
+            }
             performSubWalk(body, state);
           });
         });

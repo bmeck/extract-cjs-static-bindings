@@ -2,40 +2,40 @@
 // @ts-nocheck
 exports.a = 1;
 {
-  let exports = {b: 2};
-  exports.b = 2;
+  let exports = {_a: -1};
+  exports._a = -1.1;
 }
 {
-  let [exports] = [{c: 3}];
-  exports.c = 3;
+  let [exports] = [{_b: -2}];
+  exports._b = -2.1;
 }
 {
-  let [...exports] = [{d: 4}];
-  exports.d = 4;
+  let [...exports] = [{_c: -3}];
+  exports._c = -3.1;
 }
 {
-  let {_: exports} = {_: {e: 5}};
-  exports.e = 5;
+  let {_: exports} = {_: {_d: -4}};
+  exports._d = -4.1;
 }
 {
-  let {exports} = {exports: {f: 6}};
-  exports.f = 6;
+  let {exports} = {exports: {_e: -5}};
+  exports._e = -5.1;
 }
 {
-  let {['exports']: exports} = {exports: {g: 7}};
-  exports.g = 7;
+  let {['exports']: exports} = {exports: {_f: -6}};
+  exports._f = -6.1;
 }
 {
   class exports {};
-  exports.h = 8;
+  exports._g = -7;
 }
 {
   // annex B is confusing
   function exports() {}
-  exports.i = 9;
+  exports._h = -8;
 }
 label: {
   let exports = {};
-  exports.j = 10;
+  exports._i = -9;
 }
 exports.z = 26;

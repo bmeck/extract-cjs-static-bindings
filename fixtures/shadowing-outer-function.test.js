@@ -1,4 +1,4 @@
 // @expected 
 // @ts-nocheck
 function exports () {};
-exports.a = 1;
+exports._a = -1;
