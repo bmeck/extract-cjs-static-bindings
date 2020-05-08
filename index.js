@@ -828,12 +828,18 @@ function performAnalysis(filename, job) {
     throw new Error('malformed scope chain');
   }
   const interopAssignments = staticAssignmentNames.get('__esModule');
-  if (interopAssignments && staticAssignmentNames.has('default')) {
-    if (interopAssignments.some(({computed, value}) => {
-      return computed || Boolean(value) !== true
-    })) {
-      staticAssignmentNames.delete('default');
+  let isActingAsESM = Boolean(interopAssignments);
+  if (interopAssignments) {
+    if (staticAssignmentNames.has('default')) {
+      if (interopAssignments.some(({computed, value}) => {
+        return computed || Boolean(value) !== true
+      })) {
+        isActingAsESM = false;
+      }
     }
+  }
+  if (isActingAsESM !== true) {
+    staticAssignmentNames.delete('default');
   }
   job.resolve(staticAssignmentNames.keys(), exportsAllFrom);
 }
