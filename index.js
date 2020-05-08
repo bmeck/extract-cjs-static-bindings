@@ -427,6 +427,7 @@ class Analyzer {
 function performAnalysis(filename, job) {
   const txt = require("fs").readFileSync(filename, "utf8");
   const ast = require("acorn").parse(txt, {
+    ecmaVersion: 11,
     allowReturnOutsideFunction: true,
   });
   /**
@@ -553,6 +554,7 @@ function performAnalysis(filename, job) {
       for (let i = 0; i < declarations.length; i++) {
         performSubWalk(declarations[i], state);
       }
+      state.declarationKinds.pop();
     },
     /**
      * @param {import('estree').AssignmentExpression} node
@@ -653,6 +655,24 @@ function performAnalysis(filename, job) {
       if (node.superClass) {
         performSubWalk(node.superClass, state);
       }
+    },
+    /**
+     * @param {import('estree').CatchClause} node
+     * @param {WalkState} state
+     * @param {SubWalkMethod} performSubWalk
+     */
+    CatchClause(node, state, performSubWalk) {
+      const { param, body } = node;
+      state.scopes.withScope('let', () => {
+        if (param) {
+          state.declarationKinds.push('let');
+          withSpecialScope(state, 'pattern', () => {
+            performSubWalk(param, state);
+          });
+          state.declarationKinds.pop();
+        }
+        performSubWalk(body, state);
+      });
     },
     /**
      * @param {import('estree').BlockStatement} node
@@ -766,6 +786,9 @@ function performAnalysis(filename, job) {
       }
     },
   });
+  if (rootState.scopes.scopes.length !== 0) {
+    throw new Error('malformed scope chain');
+  }
   job.resolve(staticAssignmentNames, exportsAllFrom);
 }
 module.exports = Analyzer;

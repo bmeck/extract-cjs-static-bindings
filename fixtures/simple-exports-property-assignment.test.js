@@ -1,4 +1,4 @@
-// @expected a b c d e f g h i j k l m n o q r s t u v w x y z
+// @expected a b c d e f g h i j k l m n o p q r s t u v w x y z
 // @ts-nocheck
 exports.a = 1;
 label: exports.b = 2;
@@ -25,8 +25,7 @@ Object(
   (exports.m = 13)
 ;
 ;(exports.n = 14, exports.o = 15);
-// TODO: acorn bug
-// import(exports.p = 16);
+import(exports.p = 16);
 ;({
   _: exports.q = 17,
   ...(exports.r = 18)
