@@ -1,4 +1,4 @@
-// @expected a b c d e f g
+// @expected a b c d e f g h
 // @ts-nocheck
 function ignore() {
   exports._a = 1;
@@ -23,4 +23,9 @@ function ignore() {
 })();
 ;(async () => {
   exports.g = 7;
+})();
+;(() => {
+  ;(() => {
+    exports.h = 7;
+  })();
 })();
