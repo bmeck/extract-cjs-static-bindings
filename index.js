@@ -122,7 +122,7 @@ function gatherProperties(target) {
       if (property.key.type === "Identifier") {
         foundNames.push([String(property.key.name), property.value]);
       }
-      if (property.key.type === "Literal") {
+      if (property.key.type === "Literal" && isValidIdentifier(String(property.key.value))) {
         foundNames.push([String(property.key.value), property.value]);
       }
     }
@@ -753,18 +753,28 @@ function performAnalysis(filename, job) {
             }
           }
         }
-      } else if (
-        left.type === "MemberExpression" &&
-        left.computed !== true &&
-        left.property.type === "Identifier"
-      ) {
-        const { name } = left.property;
-        if (isPossibleExportsReference(left.object)) {
-          // exports.* =
-          potentialExportable(state, name, right, ['exports'], false);
-        } else if (isPossibleModuleExportsReference(left.object)) {
-          // module.exports.* =
-          potentialExportable(state, name, right, ['module'], false);
+      } else if (left.type === "MemberExpression") {
+        if (left.computed !== true && left.property.type === "Identifier") {
+          const { name } = left.property;
+          if (isPossibleExportsReference(left.object)) {
+            // exports.* =
+            potentialExportable(state, name, right, ['exports'], false);
+          } else if (isPossibleModuleExportsReference(left.object)) {
+            // module.exports.* =
+            potentialExportable(state, name, right, ['module'], false);
+          }
+        } else if (left.property.type === "Literal") {
+          const { value } = left.property;
+          const bindingName = String(value);
+          if (isValidIdentifier(bindingName)) {
+            if (isPossibleExportsReference(left.object)) {
+              // exports.* =
+              potentialExportable(state, bindingName, right, ['exports'], false);
+            } else if (isPossibleModuleExportsReference(left.object)) {
+              // module.exports.* =
+              potentialExportable(state, bindingName, right, ['module'], false);
+            }
+          }
         }
       }
       performSubWalk(left, state);
@@ -797,7 +807,8 @@ function performAnalysis(filename, job) {
               : null;
             if (exportBase !== null) {
               const bindingName = String(property.value);
-              potentialExportable(state, bindingName, args[2], [definePropertyBase, exportBase], true);
+              if (isValidIdentifier(bindingName))
+                potentialExportable(state, bindingName, args[2], [definePropertyBase, exportBase], true);
             }
           }
         }
