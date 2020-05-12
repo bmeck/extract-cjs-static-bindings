@@ -724,6 +724,9 @@ function performAnalysis(filename, job) {
           });
         }
         state.scopes.withScope("var", () => {
+          if (node.type !== 'ArrowFunctionExpression') {
+            state.scopes.declareBinding('var', 'this');
+          }
           state.scopes.withScope("let", () => {
             if (
               node.type === "FunctionDeclaration" ||
@@ -802,6 +805,9 @@ function performAnalysis(filename, job) {
           if (isPossibleExportsReference(left.object)) {
             // exports.* =
             potentialExportable(state, name, right, ["exports"], false);
+          } else if (left.object.type === 'ThisExpression') {
+            // this.* =
+            potentialExportable(state, name, right, ["this"], false);
           } else if (isPossibleModuleExportsReference(left.object)) {
             // module.exports.* =
             potentialExportable(state, name, right, ["module"], false);
