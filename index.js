@@ -27,6 +27,14 @@ function all(fns, then) {
 //#region astutils
 /**
  * @param {import('estree').Node} target
+ * @param {string} name
+ */
+function identifiesName(target, name) {
+  return target.type === "Identifier" && target.name === name;
+}
+/**
+ * Treats function calls as IIFEs if the callee is a function literal
+ * @param {import('estree').Node} target
  */
 function isIIFE(target) {
   return (
@@ -41,16 +49,8 @@ function isIIFE(target) {
 function isPossibleRequireCall(target) {
   return (
     target.type === "CallExpression" &&
-    target.callee.type === "Identifier" &&
-    target.callee.name === "require"
+    identifiesName(target.callee, 'require')
   );
-}
-/**
- * @param {import('estree').Node} target
- * @param {string} name
- */
-function identifiesName(target, name) {
-  return target.type === "Identifier" && target.name === name;
 }
 /**
  * @param {import('estree').Node} target
@@ -60,7 +60,7 @@ function isStaticMemberExpression(target, names) {
   for (const name of names.slice(0, -1)) {
     if (target.type !== "MemberExpression") return false;
     if (target.computed) return false;
-    identifiesName(target.object, name);
+    if (!identifiesName(target.object, name)) return false;
     target = target.property;
   }
   return identifiesName(target, names[names.length - 1]);
@@ -93,13 +93,13 @@ function isPossibleModuleExportsReference(target) {
  * @param {import('estree').Node} target
  */
 function isPossibleExportsReference(target) {
-  return target.type === "Identifier" && target.name === "exports";
+  return identifiesName(target, 'exports');
 }
 /**
  * @param {string} str
  */
 function isValidIdentifier(str) {
-  return /^(?:\p{ID_Start}|[$_])(\p{ID_Continue}|[$_])*$/u.test(str);
+  return /^(?:\p{ID_Start}|[$_])(?:\p{ID_Continue}|[$_])*$/uy.test(str);
 }
 //#endregion
 //#region scopeutils
@@ -530,6 +530,36 @@ function performAnalysis(filename, job) {
           }
         }
       )
+    } else if (isPossibleRequireCall(provider)) {
+      const call = /**
+        * @type {import('estree').CallExpression}
+        */ (provider);
+      if (call.arguments.length === 1) {
+        const specifier = call.arguments[0];
+        if (specifier.type === "Literal") {
+          const specifierString = String(specifier.value);
+          const { builtinModules } = require("module");
+          if (builtinModules.includes(specifierString)) {
+            return;
+          }
+          const dependencyPath = require.resolve(specifierString, {
+            paths: [path.dirname(filename)],
+          });
+          all([
+            ...requiredFreeVariables,
+            'require'
+          ].map(freeName => f => {
+            state.scopes.addBindingReference(freeName, (scopeStack) => {
+              if (scopeStack.scopes.length === 0) {
+                f();
+              }
+            });
+          }), () => {
+            exportsAllFrom.add(dependencyPath);
+          })
+          
+        }
+      }
     }
   }
 
@@ -729,30 +759,7 @@ function performAnalysis(filename, job) {
       let { left, right } = node;
       if (isPossibleModuleExportsReference(left)) {
         // module.exports =
-        if (right.type === "ObjectExpression") {
-          potentialSpread(state, right, ['module'], false);
-        } else if (isPossibleRequireCall(right)) {
-          const call = /**
-            * @type {import('estree').CallExpression}
-            */ (right);
-          if (call.arguments.length === 1) {
-            const specifier = call.arguments[0];
-            if (specifier.type === "Literal") {
-              const specifierString = String(specifier.value);
-              state.scopes.addBindingReference('require', (scopeStack) => {
-                if (scopeStack.scopes.length === 0) {
-                  const { builtinModules } = require("module");
-                  if (!builtinModules.includes(specifierString)) {
-                    const dependencyPath = require.resolve(specifierString, {
-                      paths: [path.dirname(filename)],
-                    });
-                    exportsAllFrom.add(dependencyPath);
-                  }
-                }
-              });
-            }
-          }
-        }
+        potentialSpread(state, right, ['module'], false);
       } else if (left.type === "MemberExpression") {
         if (left.computed !== true && left.property.type === "Identifier") {
           const { name } = left.property;
