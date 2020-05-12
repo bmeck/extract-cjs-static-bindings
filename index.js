@@ -827,20 +827,7 @@ function performAnalysis(filename, job) {
   if (rootState.scopes.scopes.length !== 0) {
     throw new Error('malformed scope chain');
   }
-  const interopAssignments = staticAssignmentNames.get('__esModule');
-  let isActingAsESM = Boolean(interopAssignments);
-  if (interopAssignments) {
-    if (staticAssignmentNames.has('default')) {
-      if (interopAssignments.some(({computed, value}) => {
-        return computed || Boolean(value) !== true
-      })) {
-        isActingAsESM = false;
-      }
-    }
-  }
-  if (isActingAsESM !== true) {
-    staticAssignmentNames.delete('default');
-  }
+  staticAssignmentNames.delete('default');
   job.resolve(staticAssignmentNames.keys(), exportsAllFrom);
 }
 module.exports = Analyzer;
