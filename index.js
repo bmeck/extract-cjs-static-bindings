@@ -1,7 +1,7 @@
 "use strict";
 // @ts-ignore
 const acornWalk = require("acorn-walk");
-const path = require('path');
+const path = require("path");
 
 /**
  * @param {Array<(exec: () => void) => void>} fns
@@ -30,6 +30,9 @@ function all(fns, then) {
  * @param {string} name
  */
 function identifiesName(target, name) {
+  if (name === "this" && target.type === "ThisExpression") {
+    return true;
+  }
   return target.type === "Identifier" && target.name === name;
 }
 /**
@@ -48,52 +51,77 @@ function isIIFE(target) {
  */
 function isPossibleRequireCall(target) {
   return (
-    target.type === "CallExpression" &&
-    identifiesName(target.callee, 'require')
+    target.type === "CallExpression" && identifiesName(target.callee, "require")
   );
 }
 /**
+ * Searches the target to find if it is a static member expression that matches
+ * one of the parameters.
+ *
  * @param {import('estree').Node} target
- * @param {string[]} names
+ * @param {string[][]} expressions
+ * @returns {number}
  */
-function isStaticMemberExpression(target, names) {
-  for (const name of names.slice(0, -1)) {
-    if (target.type !== "MemberExpression") return false;
-    if (target.computed) return false;
-    if (!identifiesName(target.object, name)) return false;
-    target = target.property;
+function findStaticMemberExpression(target, expressions) {
+  expression_loop: for (
+    let expressionIndex = 0;
+    expressionIndex < expressions.length;
+    expressionIndex++
+  ) {
+    let node = target;
+    const names = expressions[expressionIndex];
+    for (let nameIndex = 0; nameIndex < names.length - 1; nameIndex++) {
+      const name = names[nameIndex];
+      if (
+        node.type !== "MemberExpression" ||
+        node.computed ||
+        !identifiesName(node.object, name)
+      ) {
+        continue expression_loop;
+      }
+      node = node.property;
+    }
+    if (identifiesName(node, names[names.length - 1])) {
+      return expressionIndex;
+    }
   }
-  return identifiesName(target, names[names.length - 1]);
+  return -1;
 }
 /**
  * @param {import('estree').Node} target
  */
 function isPossibleObjectDefinePropertyReference(target) {
-  return isStaticMemberExpression(target, ["Object", "defineProperty"]);
+  return (
+    findStaticMemberExpression(target, [["Object", "defineProperty"]]) === 0
+  );
 }
 /**
  * @param {import('estree').Node} target
  */
 function isPossibleObjectDefinePropertiesReference(target) {
-  return isStaticMemberExpression(target, ["Object", "defineProperties"]);
+  return (
+    findStaticMemberExpression(target, [["Object", "defineProperties"]]) === 0
+  );
 }
 /**
  * @param {import('estree').Node} target
  */
 function isPossibleReflectDefinePropertyReference(target) {
-  return isStaticMemberExpression(target, ["Reflect", "defineProperty"]);
+  return (
+    findStaticMemberExpression(target, [["Reflect", "defineProperty"]]) === 0
+  );
 }
 /**
  * @param {import('estree').Node} target
  */
 function isPossibleModuleExportsReference(target) {
-  return isStaticMemberExpression(target, ["module", "exports"]);
+  return findStaticMemberExpression(target, [["module", "exports"]]) === 0;
 }
 /**
  * @param {import('estree').Node} target
  */
 function isPossibleExportsReference(target) {
-  return identifiesName(target, 'exports');
+  return identifiesName(target, "exports");
 }
 /**
  * @param {string} str
@@ -122,7 +150,10 @@ function gatherProperties(target) {
       if (property.key.type === "Identifier") {
         foundNames.push([String(property.key.name), property.value]);
       }
-      if (property.key.type === "Literal" && isValidIdentifier(String(property.key.value))) {
+      if (
+        property.key.type === "Literal" &&
+        isValidIdentifier(String(property.key.value))
+      ) {
         foundNames.push([String(property.key.value), property.value]);
       }
     }
@@ -161,7 +192,7 @@ class ScopeStack {
    *
    * Will not notify `a` from `a = 1` when the block scope closes, even though
    * the block scope does have a binding named `a`.
-   * 
+   *
    * If there are no scopes left, all remaining pending references will be
    * notified.
    *
@@ -268,49 +299,47 @@ class Scope {
 /**
  * @typedef { (node: import('estree').Node, state: WalkState)=>void } SubWalkMethod
  * @typedef { 'iife' | 'pattern' | null } SpecialForm
- * @typedef {
-    {
-      scopes: ScopeStack,
-      declarationKinds: ScopeKind[],
-      as: SpecialForm
+ */
+class WalkState {
+  /** @type {ScopeStack} */
+  scopes = new ScopeStack();
+  /** @type {ScopeKind[]} */
+  declarationKinds = [];
+  /** @type {SpecialForm} */
+  as = null;
+  /**
+   * @param {NonNullable<WalkState['as']>} as
+   * @param {()=>void} fn
+   */
+  withSpecialScope(as, fn) {
+    if (this.as !== null) {
+      throw new Error("already in a special walk scope");
     }
-  } WalkState 
- */
-/**
- * @param {WalkState} state
- * @param {NonNullable<WalkState['as']>} as
- * @param {()=>void} fn
- */
-function withSpecialScope(state, as, fn) {
-  if (state.as !== null) {
-    throw new Error("already in a special walk scope");
+    this.as = as;
+    fn();
+    if (this.as !== null) {
+      throw new Error(`special walk scope ${as} was not handled`);
+    }
   }
-  state.as = as;
-  fn();
-  if (state.as !== null) {
-    throw new Error(`special walk scope ${as} was not handled`);
+  /**
+   * @param {NonNullable<WalkState['as']>} as
+   */
+  assertInSpecialScope(as) {
+    if (this.as !== as) {
+      throw new Error("expected to be in a " + as + " walk scope");
+    }
+    this.as = null;
   }
-}
-/**
- * @param {WalkState} state
- * @param {NonNullable<WalkState['as']>} as
- */
-function assertInSpecialScope(state, as) {
-  if (state.as !== as) {
-    throw new Error("expected to be in a " + as + " walk scope");
+  /**
+   * @param {NonNullable<WalkState['as']>} as
+   */
+  consumeIfInSpecialScope(as) {
+    if (this.as !== as) {
+      return false;
+    }
+    this.as = null;
+    return true;
   }
-  state.as = null;
-}
-/**
- * @param {WalkState} state
- * @param {NonNullable<WalkState['as']>} as
- */
-function consumeIfInSpecialScope(state, as) {
-  if (state.as !== as) {
-    return false;
-  }
-  state.as = null;
-  return true;
 }
 //#endregion
 //#region jobstructs
@@ -365,7 +394,7 @@ class Analyzer {
       const job = new AnalysisJob();
       this.files.set(filename, {
         job,
-        allNames: null
+        allNames: null,
       });
       performAnalysis(filename, job);
       if (job.exportsAllNamesFrom.size !== 0) {
@@ -375,29 +404,31 @@ class Analyzer {
         }
       } else {
         const existing = this.files.get(filename);
-        if (!existing) throw new Error('impossible');
+        if (!existing) throw new Error("impossible");
         existing.allNames = new Set(job.staticAssignmentNames);
       }
     }
     // TODO: tarjan is a lot faster
     for (const filename of pendingFullGraph) {
       const existing = this.files.get(filename);
-      if (!existing) throw new Error('impossible');
+      if (!existing) throw new Error("impossible");
       const seen = new Set([filename]);
       const pending = new Set(existing.job.exportsAllNamesFrom);
-      const allNames = existing.allNames = new Set(existing.job.staticAssignmentNames);
+      const allNames = (existing.allNames = new Set(
+        existing.job.staticAssignmentNames
+      ));
       while (pending.size) {
         const dependencyName = pending.values().next().value;
         if (!dependencyName) {
-          throw new Error('impossible');
+          throw new Error("impossible");
         }
         pending.delete(dependencyName);
         if (seen.has(dependencyName)) {
-          continue
+          continue;
         }
         const existingDep = this.files.get(dependencyName);
         if (!existingDep) {
-          throw new Error('impossible');
+          throw new Error("impossible");
         }
         seen.add(dependencyName);
         if (existingDep.allNames) {
@@ -418,7 +449,7 @@ class Analyzer {
     }
     const existing = this.files.get(filename);
     if (!existing) {
-      throw new Error('did not fulfill job')
+      throw new Error("did not fulfill job");
     }
     return existing.allNames;
   }
@@ -439,101 +470,104 @@ function performAnalysis(filename, job) {
   /**
    * @type {WalkState}
    */
-  const rootState = {
-    scopes: new ScopeStack(),
-    /**
-     * @type {Array<ScopeKind>}
-     */
-    declarationKinds: [],
-    as: null,
-  };
+  const rootState = new WalkState();
   /**
-   * @type {Map<string, Array<ReturnType<getValue>>>}
+   * @type {Map<string, Array<ReturnType<getStaticValue>>>}
    */
   const staticAssignmentNames = new Map();
   /**
-   * @param {import('estree').Node} node 
+   * This should only be called in order to make a static provider
+   * @param {import('estree').Node} node
    * @param {boolean} descriptor
    * @returns {{computed: boolean, value?: any}}
    */
-  function getValue(node, descriptor) {
+  function getStaticValue(node, descriptor) {
     if (descriptor) {
-      if (node.type === 'ObjectExpression') {
+      if (node.type === "ObjectExpression") {
         for (const prop of node.properties) {
-          if (prop.type === 'Property' && prop.computed !== true) {
+          if (prop.type === "Property" && prop.computed !== true) {
             const key = prop.key;
-            if (key.type === 'Literal') {
-              if (key.value === 'value') {
-                const rhs = getValue(prop.value, false);
-                if (rhs.computed) return {computed: true};
-                return {computed: false, value: rhs.value};
+            if (key.type === "Literal") {
+              if (key.value === "value") {
+                const rhs = getStaticValue(prop.value, false);
+                if (rhs.computed) return { computed: true };
+                return { computed: false, value: rhs.value };
               }
-            } else if (key.type === 'Identifier') {
-              if (key.name === 'value') {
-                const rhs = getValue(prop.value, false);
-                if (rhs.computed) return {computed: true};
-                return {computed: false, value: rhs.value};
+            } else if (key.type === "Identifier") {
+              if (key.name === "value") {
+                const rhs = getStaticValue(prop.value, false);
+                if (rhs.computed) return { computed: true };
+                return { computed: false, value: rhs.value };
               }
-            } 
+            }
           }
         }
       }
-      return {computed: true};
+      return { computed: true };
     }
-    if (node.type === 'Literal') {
-      return {computed: false, value: node.value};
+    if (node.type === "Literal") {
+      return { computed: false, value: node.value };
     }
-    return {computed: true};
+    return { computed: true };
   }
   /**
-   * @param {WalkState} state 
-   * @param {string} name 
-   * @param {import('estree').Node} value 
-   * @param {string[]} requiredFreeVariables 
+   * @param {WalkState} state
+   * @param {string} name
+   * @param {import('estree').Node} value
+   * @param {string[]} requiredFreeVariables
    * @param {boolean} [descriptor]
    */
-  function potentialExportable(state, name, value, requiredFreeVariables, descriptor = false) {
+  function potentialExportable(
+    state,
+    name,
+    value,
+    requiredFreeVariables,
+    descriptor = false
+  ) {
     all(
-      requiredFreeVariables.map(name => f => {
-        state.scopes.addBindingReference(name, scopeStack => {
+      requiredFreeVariables.map((name) => (f) => {
+        state.scopes.addBindingReference(name, (scopeStack) => {
           if (scopeStack.scopes.length === 0) f();
-        })
+        });
       }),
       () => {
         const existing = staticAssignmentNames.get(name) || [];
-        existing.push(getValue(value, descriptor));
+        existing.push(getStaticValue(value, descriptor));
         staticAssignmentNames.set(name, existing);
       }
-    )
+    );
   }
   /**
-   * 
+   *
    * @param {WalkState} state
-   * @param {import('estree').Node} provider 
-   * @param {string[]} requiredFreeVariables 
+   * @param {import('estree').Node} provider
+   * @param {string[]} requiredFreeVariables
    * @param {boolean} [descriptor]
    */
-  function potentialSpread(state, provider, requiredFreeVariables, descriptor = false) {
-    if (provider.type === 'ObjectExpression') {
+  function potentialSpread(
+    state,
+    provider,
+    requiredFreeVariables,
+    descriptor = false
+  ) {
+    if (provider.type === "ObjectExpression") {
       const foundProperties = gatherProperties(provider);
       all(
-        requiredFreeVariables.map(name => f => {
-          state.scopes.addBindingReference(name, scopeStack => {
+        requiredFreeVariables.map((name) => (f) => {
+          state.scopes.addBindingReference(name, (scopeStack) => {
             if (scopeStack.scopes.length === 0) f();
-          })
+          });
         }),
         () => {
           for (const [name, value] of foundProperties) {
             const existing = staticAssignmentNames.get(name) || [];
-            existing.push(getValue(value, descriptor));
+            existing.push(getStaticValue(value, descriptor));
             staticAssignmentNames.set(name, existing);
           }
         }
-      )
+      );
     } else if (isPossibleRequireCall(provider)) {
-      const call = /**
-        * @type {import('estree').CallExpression}
-        */ (provider);
+      const call = /** @type {import('estree').CallExpression} */ (provider);
       if (call.arguments.length === 1) {
         const specifier = call.arguments[0];
         if (specifier.type === "Literal") {
@@ -545,19 +579,18 @@ function performAnalysis(filename, job) {
           const dependencyPath = require.resolve(specifierString, {
             paths: [path.dirname(filename)],
           });
-          all([
-            ...requiredFreeVariables,
-            'require'
-          ].map(freeName => f => {
-            state.scopes.addBindingReference(freeName, (scopeStack) => {
-              if (scopeStack.scopes.length === 0) {
-                f();
-              }
-            });
-          }), () => {
-            exportsAllFrom.add(dependencyPath);
-          })
-          
+          all(
+            [...requiredFreeVariables, "require"].map((freeName) => (f) => {
+              state.scopes.addBindingReference(freeName, (scopeStack) => {
+                if (scopeStack.scopes.length === 0) {
+                  f();
+                }
+              });
+            }),
+            () => {
+              exportsAllFrom.add(dependencyPath);
+            }
+          );
         }
       }
     }
@@ -575,7 +608,7 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     Identifier(node, state) {
-      if (consumeIfInSpecialScope(state, "pattern")) {
+      if (state.consumeIfInSpecialScope("pattern")) {
         let kind = state.declarationKinds.slice(-1)[0];
         state.scopes.declareBinding(kind, node.name);
       }
@@ -586,8 +619,8 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     RestElement(node, state, performSubWalk) {
-      assertInSpecialScope(state, "pattern");
-      withSpecialScope(state, "pattern", () => {
+      state.assertInSpecialScope("pattern");
+      state.withSpecialScope("pattern", () => {
         performSubWalk(node.argument, state);
       });
     },
@@ -597,8 +630,8 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     AssignmentPattern(node, state, performSubWalk) {
-      assertInSpecialScope(state, "pattern");
-      withSpecialScope(state, "pattern", () => {
+      state.assertInSpecialScope("pattern");
+      state.withSpecialScope("pattern", () => {
         performSubWalk(node.left, state);
       });
     },
@@ -609,10 +642,10 @@ function performAnalysis(filename, job) {
      */
     ObjectPattern(node, state, performSubWalk) {
       let { properties } = node;
-      assertInSpecialScope(state, "pattern");
+      state.assertInSpecialScope("pattern");
       for (let i = 0; i < properties.length; i++) {
         const pattern = properties[i];
-        withSpecialScope(state, "pattern", () => {
+        state.withSpecialScope("pattern", () => {
           performSubWalk(pattern, state);
         });
       }
@@ -624,10 +657,10 @@ function performAnalysis(filename, job) {
      */
     ArrayPattern(node, state, performSubWalk) {
       let { elements } = node;
-      assertInSpecialScope(state, "pattern");
+      state.assertInSpecialScope("pattern");
       for (let i = 0; i < elements.length; i++) {
         const pattern = elements[i];
-        withSpecialScope(state, "pattern", () => {
+        state.withSpecialScope("pattern", () => {
           performSubWalk(pattern, state);
         });
       }
@@ -639,7 +672,7 @@ function performAnalysis(filename, job) {
      */
     VariableDeclarator(node, state, performSubWalk) {
       let { id, init } = node;
-      withSpecialScope(state, "pattern", () => {
+      state.withSpecialScope("pattern", () => {
         performSubWalk(id, state);
       });
       if (init) {
@@ -683,19 +716,22 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     Function(node, state, performSubWalk) {
-      if (consumeIfInSpecialScope(state, "iife")) {
+      if (state.consumeIfInSpecialScope("iife")) {
         let { body, params } = node;
         for (let i = 0; i < params.length; i++) {
-          withSpecialScope(state, "pattern", () => {
+          state.withSpecialScope("pattern", () => {
             performSubWalk(params[i], state);
           });
         }
         state.scopes.withScope("var", () => {
           state.scopes.withScope("let", () => {
-            if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') {
+            if (
+              node.type === "FunctionDeclaration" ||
+              node.type === "FunctionExpression"
+            ) {
               const { id } = node;
               if (id) {
-                state.scopes.declareBinding('var', id.name);
+                state.scopes.declareBinding("var", id.name);
               }
             }
             performSubWalk(body, state);
@@ -725,10 +761,10 @@ function performAnalysis(filename, job) {
      */
     CatchClause(node, state, performSubWalk) {
       const { param, body } = node;
-      state.scopes.withScope('let', () => {
+      state.scopes.withScope("let", () => {
         if (param) {
-          state.declarationKinds.push('let');
-          withSpecialScope(state, 'pattern', () => {
+          state.declarationKinds.push("let");
+          state.withSpecialScope("pattern", () => {
             performSubWalk(param, state);
           });
           state.declarationKinds.pop();
@@ -751,24 +787,24 @@ function performAnalysis(filename, job) {
     },
     //#endregion
     /**
-      * @param {import('estree').AssignmentExpression} node
-      * @param {WalkState} state
-      * @param {SubWalkMethod} performSubWalk
-      */
+     * @param {import('estree').AssignmentExpression} node
+     * @param {WalkState} state
+     * @param {SubWalkMethod} performSubWalk
+     */
     AssignmentExpression(node, state, performSubWalk) {
       let { left, right } = node;
       if (isPossibleModuleExportsReference(left)) {
         // module.exports =
-        potentialSpread(state, right, ['module'], false);
+        potentialSpread(state, right, ["module"], false);
       } else if (left.type === "MemberExpression") {
         if (left.computed !== true && left.property.type === "Identifier") {
           const { name } = left.property;
           if (isPossibleExportsReference(left.object)) {
             // exports.* =
-            potentialExportable(state, name, right, ['exports'], false);
+            potentialExportable(state, name, right, ["exports"], false);
           } else if (isPossibleModuleExportsReference(left.object)) {
             // module.exports.* =
-            potentialExportable(state, name, right, ['module'], false);
+            potentialExportable(state, name, right, ["module"], false);
           }
         } else if (left.property.type === "Literal") {
           const { value } = left.property;
@@ -776,10 +812,16 @@ function performAnalysis(filename, job) {
           if (isValidIdentifier(bindingName)) {
             if (isPossibleExportsReference(left.object)) {
               // exports.* =
-              potentialExportable(state, bindingName, right, ['exports'], false);
+              potentialExportable(
+                state,
+                bindingName,
+                right,
+                ["exports"],
+                false
+              );
             } else if (isPossibleModuleExportsReference(left.object)) {
               // module.exports.* =
-              potentialExportable(state, bindingName, right, ['module'], false);
+              potentialExportable(state, bindingName, right, ["module"], false);
             }
           }
         }
@@ -815,7 +857,13 @@ function performAnalysis(filename, job) {
             if (exportBase !== null) {
               const bindingName = String(property.value);
               if (isValidIdentifier(bindingName))
-                potentialExportable(state, bindingName, args[2], [definePropertyBase, exportBase], true);
+                potentialExportable(
+                  state,
+                  bindingName,
+                  args[2],
+                  [definePropertyBase, exportBase],
+                  true
+                );
             }
           }
         }
@@ -831,33 +879,35 @@ function performAnalysis(filename, job) {
             ? "module"
             : null;
           if (exportBase !== null) {
-            potentialSpread(state, properties, [exportBase, 'Object'], true);
+            potentialSpread(state, properties, [exportBase, "Object"], true);
           }
         }
       }
       if (isIIFE(node)) {
-        withSpecialScope(state, "iife", () => {
+        state.withSpecialScope("iife", () => {
           performSubWalk(callee, state);
         });
       }
     },
   });
   if (rootState.scopes.scopes.length !== 0) {
-    throw new Error('malformed scope chain');
+    throw new Error("malformed scope chain");
   }
-  const interopAssignments = staticAssignmentNames.get('__esModule');
+  const interopAssignments = staticAssignmentNames.get("__esModule");
   let isActingAsESM = Boolean(interopAssignments);
   if (interopAssignments) {
-    if (staticAssignmentNames.has('default')) {
-      if (interopAssignments.some(({computed, value}) => {
-        return computed || Boolean(value) !== true
-      })) {
+    if (staticAssignmentNames.has("default")) {
+      if (
+        interopAssignments.some(({ computed, value }) => {
+          return computed || Boolean(value) !== true;
+        })
+      ) {
         isActingAsESM = false;
       }
     }
   }
   if (isActingAsESM !== true) {
-    staticAssignmentNames.delete('default');
+    staticAssignmentNames.delete("default");
   }
   job.resolve(staticAssignmentNames.keys(), exportsAllFrom);
 }
