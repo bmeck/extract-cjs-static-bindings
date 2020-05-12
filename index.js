@@ -641,7 +641,7 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     ObjectPattern(node, state, performSubWalk) {
-      let { properties } = node;
+      const { properties } = node;
       state.assertInSpecialScope("pattern");
       for (let i = 0; i < properties.length; i++) {
         const pattern = properties[i];
@@ -656,7 +656,7 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     ArrayPattern(node, state, performSubWalk) {
-      let { elements } = node;
+      const { elements } = node;
       state.assertInSpecialScope("pattern");
       for (let i = 0; i < elements.length; i++) {
         const pattern = elements[i];
@@ -718,15 +718,17 @@ function performAnalysis(filename, job) {
     Function(node, state, performSubWalk) {
       if (state.consumeIfInSpecialScope("iife")) {
         let { body, params } = node;
-        for (let i = 0; i < params.length; i++) {
-          state.withSpecialScope("pattern", () => {
-            performSubWalk(params[i], state);
-          });
-        }
         state.scopes.withScope("var", () => {
-          if (node.type !== 'ArrowFunctionExpression') {
-            state.scopes.declareBinding('var', 'this');
+          if (node.type !== "ArrowFunctionExpression") {
+            state.scopes.declareBinding("var", "this");
           }
+          state.declarationKinds.push("var");
+          for (let i = 0; i < params.length; i++) {
+            state.withSpecialScope("pattern", () => {
+              performSubWalk(params[i], state);
+            });
+          }
+          state.declarationKinds.pop();
           state.scopes.withScope("let", () => {
             if (
               node.type === "FunctionDeclaration" ||
@@ -795,7 +797,7 @@ function performAnalysis(filename, job) {
      * @param {SubWalkMethod} performSubWalk
      */
     AssignmentExpression(node, state, performSubWalk) {
-      let { left, right } = node;
+      const { left, right } = node;
       if (isPossibleModuleExportsReference(left)) {
         // module.exports =
         potentialSpread(state, right, ["module"], false);
@@ -805,7 +807,7 @@ function performAnalysis(filename, job) {
           if (isPossibleExportsReference(left.object)) {
             // exports.* =
             potentialExportable(state, name, right, ["exports"], false);
-          } else if (left.object.type === 'ThisExpression') {
+          } else if (left.object.type === "ThisExpression") {
             // this.* =
             potentialExportable(state, name, right, ["this"], false);
           } else if (isPossibleModuleExportsReference(left.object)) {

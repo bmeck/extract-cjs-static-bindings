@@ -4,7 +4,7 @@
     "build": "npm run build:webpack:umd ; npm run build:webpack:cjs ; npm run build:parcel:cjs ; npm run build:rollup:cjs ; npm run build:rollup:umd ; npm run build:typescript:cjs ; npm run build:babel:cjs",
     "build:webpack:umd": "webpack --config ./webpack.config.umd.cjs",
     "build:webpack:cjs": "webpack --config ./webpack.config.commonjs.cjs",
-    "build:parcel:cjs": "parcel build ./entry.js ; mv dist/entry.js ../bundler-out/parcel.cjs.js ; mv dist/entry.js.map ../bundler-out/parcel.cjs.js",
+    "build:parcel:cjs": "parcel build ./entry.js ; mv dist/entry.js ../bundler-out/parcel.cjs.js ; mv dist/entry.js.map ../bundler-out/parcel.cjs.js.map",
     "build:rollup:cjs": "rollup --config ./rollup.config.commonjs.cjs",
     "build:rollup:umd": "rollup --config ./rollup.config.umd.cjs",
     "build:typescript:cjs": "tsc",
