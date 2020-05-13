@@ -1,2 +1,2 @@
-// @expected 
+// @expected default
 exports.default = 'default';
