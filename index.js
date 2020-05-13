@@ -297,7 +297,13 @@ class Scope {
 //#endregion
 //#region walkutils
 /**
- * @typedef { (node: import('estree').Node, state: WalkState)=>void } SubWalkMethod
+ * @typedef { (node: import('estree').Node, state: WalkState) => void } SubWalkMethod
+ */
+/**
+ * @template T
+ * @typedef { <T extends import('estree').Node>(node: T, state: WalkState, performSubWalk: SubWalkMethod) => void } ASTHandler<T>
+ */
+/**
  * @typedef { 'iife' | 'pattern' | null } SpecialForm
  */
 class WalkState {
@@ -308,7 +314,7 @@ class WalkState {
   /** @type {SpecialForm} */
   as = null;
   /**
-   * @param {NonNullable<WalkState['as']>} as
+   * @param {NonNullable<this['as']>} as
    * @param {()=>void} fn
    */
   withSpecialScope(as, fn) {
@@ -322,7 +328,7 @@ class WalkState {
     }
   }
   /**
-   * @param {NonNullable<WalkState['as']>} as
+   * @param {NonNullable<this['as']>} as
    */
   assertInSpecialScope(as) {
     if (this.as !== as) {
@@ -331,7 +337,7 @@ class WalkState {
     this.as = null;
   }
   /**
-   * @param {NonNullable<WalkState['as']>} as
+   * @param {NonNullable<this['as']>} as
    */
   consumeIfInSpecialScope(as) {
     if (this.as !== as) {
@@ -602,44 +608,28 @@ function performAnalysis(filename, job) {
   const exportsAllFrom = new Set();
   acornWalk.recursive(ast, rootState, {
     //#region patterns
-    /**
-     * @param {import('estree').Identifier} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').Identifier>} */
     Identifier(node, state) {
       if (state.consumeIfInSpecialScope("pattern")) {
         let kind = state.declarationKinds.slice(-1)[0];
         state.scopes.declareBinding(kind, node.name);
       }
     },
-    /**
-     * @param {import('estree').RestElement} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').RestElement>} */
     RestElement(node, state, performSubWalk) {
       state.assertInSpecialScope("pattern");
       state.withSpecialScope("pattern", () => {
         performSubWalk(node.argument, state);
       });
     },
-    /**
-     * @param {import('estree').AssignmentPattern} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').AssignmentPattern>} */
     AssignmentPattern(node, state, performSubWalk) {
       state.assertInSpecialScope("pattern");
       state.withSpecialScope("pattern", () => {
         performSubWalk(node.left, state);
       });
     },
-    /**
-     * @param {import('estree').ObjectPattern} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').ObjectPattern>} */
     ObjectPattern(node, state, performSubWalk) {
       const { properties } = node;
       state.assertInSpecialScope("pattern");
@@ -650,11 +640,7 @@ function performAnalysis(filename, job) {
         });
       }
     },
-    /**
-     * @param {import('estree').ArrayPattern} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').ArrayPattern>} */
     ArrayPattern(node, state, performSubWalk) {
       const { elements } = node;
       state.assertInSpecialScope("pattern");
@@ -665,11 +651,7 @@ function performAnalysis(filename, job) {
         });
       }
     },
-    /**
-     * @param {import('estree').VariableDeclarator} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').VariableDeclarator>} */
     VariableDeclarator(node, state, performSubWalk) {
       let { id, init } = node;
       state.withSpecialScope("pattern", () => {
@@ -679,11 +661,7 @@ function performAnalysis(filename, job) {
         performSubWalk(init, state);
       }
     },
-    /**
-     * @param {import('estree').VariableDeclaration} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').VariableDeclaration>} */
     VariableDeclaration(node, state, performSubWalk) {
       let { kind, declarations } = node;
       if (kind === "const") kind = "let";
@@ -695,11 +673,7 @@ function performAnalysis(filename, job) {
     },
     //#endregion
     //#region scoping
-    /**
-     * @param {import('estree').Program} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').Program>} */
     Program(node, state, performSubWalk) {
       state.scopes.withScope("var", () => {
         state.scopes.withScope("let", () => {
@@ -710,11 +684,7 @@ function performAnalysis(filename, job) {
         });
       });
     },
-    /**
-     * @param {import('estree').Function} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').Function>} */
     Function(node, state, performSubWalk) {
       if (state.consumeIfInSpecialScope("iife")) {
         let { body, params } = node;
@@ -746,11 +716,7 @@ function performAnalysis(filename, job) {
         state.scopes.declareBinding("let", node.id.name);
       }
     },
-    /**
-     * @param {import('estree').ClassDeclaration} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').ClassDeclaration>} */
     ClassDeclaration(node, state, performSubWalk) {
       if (node.id) {
         state.scopes.declareBinding("let", node.id.name);
@@ -759,11 +725,7 @@ function performAnalysis(filename, job) {
         performSubWalk(node.superClass, state);
       }
     },
-    /**
-     * @param {import('estree').CatchClause} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').CatchClause>} */
     CatchClause(node, state, performSubWalk) {
       const { param, body } = node;
       state.scopes.withScope("let", () => {
@@ -777,11 +739,7 @@ function performAnalysis(filename, job) {
         performSubWalk(body, state);
       });
     },
-    /**
-     * @param {import('estree').BlockStatement} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').BlockStatement>} */
     BlockStatement(node, state, performSubWalk) {
       state.scopes.withScope("let", () => {
         const { body } = node;
@@ -791,11 +749,7 @@ function performAnalysis(filename, job) {
       });
     },
     //#endregion
-    /**
-     * @param {import('estree').AssignmentExpression} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').AssignmentExpression>} */
     AssignmentExpression(node, state, performSubWalk) {
       const { left, right } = node;
       if (isPossibleModuleExportsReference(left)) {
@@ -837,11 +791,7 @@ function performAnalysis(filename, job) {
       performSubWalk(left, state);
       performSubWalk(right, state);
     },
-    /**
-     * @param {import('estree').CallExpression} node
-     * @param {WalkState} state
-     * @param {SubWalkMethod} performSubWalk
-     */
+    /** @type {ASTHandler<import('estree').CallExpression>} */
     CallExpression(node, state, performSubWalk) {
       const { callee, arguments: args } = node;
       for (let i = 0; i < args.length; i++) {
