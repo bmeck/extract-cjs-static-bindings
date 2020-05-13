@@ -8,7 +8,7 @@ if (txt.startsWith('// @expected ') !== true) {
 const expected = new Set((
   txt.match(/^\/\/ @expected( (.*)|)$/muy) || ['','']
 )[1].split(/\s+/u).filter(Boolean));
-const Analyzer = require('./index.js');
+const Analyzer = require('./index.js').Analyzer;
 const actual = new Analyzer().extractStaticBindings(
   require('path').resolve(filename)
 );
